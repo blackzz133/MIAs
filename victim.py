@@ -473,21 +473,16 @@ def STSA_victim_model(args, dataname, victim_type, victim_loader, train_test_rat
     cen_var.append(torch.zeros(cens[time - 1].shape).cuda())
     model.train()
     cost = 0
-    max_o = 0
     min_cost = 100
     save_model = cp.deepcopy(model)
     for epoch in tqdm(range(300)):
         cost = model.get_total_loss(victim_graphs, degrees, cen_var, split)
         o = objective_function2(model, victim_loader, split, device, type=None)
-        #if cost < min_cost:
-            #min_cost = cost
-            #save_model = model
-        if o > max_o:
-           max_o = o
-           save_model = model
+        if cost < min_cost:
+            min_cost = cost
+            save_model = model
         if (epoch + 1) % 20 == 0:
             print('The ' + str(epoch) + ' training loss is ' + str(cost))
-
             # print(cost)
         # print(cost)
         cost.backward()
@@ -566,29 +561,6 @@ def objective_function2(model, dataset, split, device, type):
     print('The accuracy result of rgcn is ' + str(accuracy / total_time))
     return accuracy / total_time
 
-def edge_attack_perturbation(train_loader, perturbation_rate):
-    edge_indices = []
-    edge_weights = []
-
-    for time, snapshot in enumerate(train_loader):
-        adj = to_scipy_sparse_matrix(snapshot.edge_index, snapshot.edge_attr).tocsr()
-        features = snapshot.x
-        labels = torch.argmax(snapshot.y, dim=1)
-        n_perturbations = round(snapshot.x.shape[0] * perturbation_rate)
-        model =DICE()
-        model.attack(adj, labels, n_perturbations=n_perturbations)
-        modified_adj = model.modified_adj
-        # w = (adj!=new_a).nnz==0
-        # rand.attack(adj, attack_type="add", n_candidates=10000)
-        # rand.attack(adj, attack_type="add_by_remove", n_candidates=10000)
-        new_edge_index, new_edge_attr = from_scipy_sparse_matrix(modified_adj)
-        # edge_indices.append(new_edge_index.tolist())
-        # edge_weights.append(new_edge_attr.tolist())
-        edge_indices.append(new_edge_index.tolist())
-        edge_weights.append(new_edge_attr.tolist())
-    train_loader.edge_indices = edge_indices
-    train_loader.edge_weights = edge_weights
-    return train_loader
 
 def data_preprossing2(dataset):
     graphs = []
@@ -611,17 +583,6 @@ def data_preprossing(dataset):
     return graphs
 
 
-# 1.0704 lr=0.01 DCRNN
-#The accuracy result of rgcn is tensor(0.8425, device='cuda:0')
-#The accuracy result of rgcn is tensor(0.8355, device='cuda:0')
-
-# 1.1102 lr=0.008 EVOLVE
-#The accuracy result of rgcn is tensor(0.7986, device='cuda:0')
-#The accuracy result of rgcn is tensor(0.7940, device='cuda:0')
-
-#1.1184  lr=0.01 TGCN
-#The accuracy result of rgcn is tensor(0.7910, device='cuda:0')
-#The accuracy result of rgcn is tensor(0.7867, device='cuda:0')
 
 #1.1215  lr=0.01 A3TGCN
 # The accuracy result of rgcn is tensor(0.7910, device='cuda:0')
