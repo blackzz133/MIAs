@@ -61,6 +61,8 @@ class raw_attack_model:
         else:
             url = str(self.dataname) + '/attack/'+str(self.model_type)+ '/' + str(self.defence_type) + '/' + str(self.attack_type)
         '''
+        #url = str(self.dataname) + '/attack/' + str(self.model_type) + '/' + str(self.defence_type) + '/' + str(
+            #self.attack_type)
         url = str(self.dataname) + '/attack/' + str(self.model_type) + '/' + str(self.defence_type) + '/' + str(
             self.attack_type)
         ratio = 0.5  # for testing
@@ -138,10 +140,10 @@ class raw_attack_model:
             if epoch % 20 == 0:
                 print('The ' + str(epoch) + ' training loss is ' + str(cost))
                 if epoch > 0:
-                    if self.defence_type!='STSA':
-                        result, accuracy = self.infer(self.shadow_loader, train_test_ratio)
-                    else:
+                    if (self.defence_type=='STSA') or (self.defence_type=='DPSTSA'):
                         result, accuracy = self.infer2(self.shadow_loader, train_test_ratio)
+                    else:
+                        result, accuracy = self.infer(self.shadow_loader, train_test_ratio)
                     total = result+accuracy
                     if (total > max_f1) and (epoch > 0):
                         attack_model = cp.deepcopy(self.attack_model)
@@ -187,7 +189,7 @@ class raw_attack_model:
         #print('The recall of membership inference is ' + str(result1))
         #result2 = precision_score(all_labels.to('cpu'), all_attack_labels.to('cpu'))
         #print('The precision of membership inference is ' + str(result2))
-        result = f1_score(all_labels.to('cpu'), all_attack_labels.to('cpu'))
+        result = f1_score(all_labels.to('cpu'), all_attack_labels.to('cpu'), average='weighted')
         print('The f1-score of membership inference is ' + str(result))
         accuracy = accuracy_score(all_labels.to('cpu'), all_attack_labels.to('cpu'))
         print('The accuracy of membership inference is ' + str(accuracy))
@@ -225,7 +227,7 @@ class raw_attack_model:
         #print('The recall of membership inference is ' + str(result1))
         #result2 = precision_score(all_labels.to('cpu'), all_attack_labels.to('cpu'))
         #print('The precision of membership inference is ' + str(result2))
-        result = f1_score(all_labels.to('cpu'), all_attack_labels.to('cpu'))
+        result = f1_score(all_labels.to('cpu'), all_attack_labels.to('cpu'), average='weighted')
         print('The f1-score of membership inference is ' + str(result))
         accuracy = accuracy_score(all_labels.to('cpu'), all_attack_labels.to('cpu'))
         print('The accuracy of membership inference is ' + str(accuracy))
