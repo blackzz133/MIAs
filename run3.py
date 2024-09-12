@@ -3,11 +3,12 @@ import numpy as np
 import networkx as nx
 from dataloader import DBLPLoader
 import argparse
-from victim import raw_victim_model, relax_victim_model, adver_victim_model, DP_victim_model, STSA_victim_model, objective_function, objective_function2
+from victim import raw_victim_model, relax_victim_model, adver_victim_model, DP_victim_model, STSA_victim_model, DPSTSA_victim_model, objective_function, objective_function2
 from attack import raw_attack_model
 from shadow import raw_shadow_model
 from sklearn.metrics import f1_score
 from torch_geometric_temporal.signal import temporal_signal_split, train_test_split
+#from torch_geometric.datasets import aminer
 
 # from TGCN.signal.train_test_split import temporal_signal_split
 import os
@@ -77,7 +78,8 @@ def run():
     print('start')
     args = parser.parse_args()
     datanames = ['DBLP5', 'DBLP3', 'reddit', 'Brain']
-    attack_model_types = ['DCRNN', 'GConvGRU', 'TGCN', 'A3TGCN', 'GCN']
+    attack_model_types = ['GCN','DCRNN', 'GConvGRU', 'TGCN', 'A3TGCN', ]
+    defence_type = ['STSA','DPSTSA']
     victim_types = ['DCRNN', 'GConvGRU', 'TGCN', 'A3TGCN']
     shadow_types = ['DCRNN', 'GConvGRU', 'TGCN', 'A3TGCN']
     url = 'features.txt'
@@ -92,7 +94,7 @@ def run():
                   'bce': criterion_bce}
     # victim_type = 'DCRNN' #DCRNN, XXXEVOLVEGCNO,GConvGRU, TGCN, A3TGCN
     dataname = 'Brain'  # DBLP5,DBLP3,reddit, Brain, epinion
-    attack_model_type = 'A3TGCN'  # STG #DCRNN, GConvGRU, TGCN, A3TGCN, GCN
+    attack_model_type = 'A3TGCN'  # STG #GCN, DCRNN, GConvGRU, TGCN, A3TGCN
     #defence_type = 'DP'  # raw, relaxloss, DP,adver
     victim_type1 = victim_types[0]
     victim_type2 = victim_types[1]
@@ -136,9 +138,9 @@ def run():
         shadow_lr = 0.015
         attack_lr = 0.005
     elif dataname == 'Brain':
-        victim_lr = 0.015
+        victim_lr = 0.005
         shadow_lr = 0.015
-        attack_lr = 0.005
+        attack_lr = 0.0005
     elif dataname == 'epinion':
         victim_lr = 0.1
         shadow_lr = 0.1
@@ -149,16 +151,54 @@ def run():
     # print(victim_type)
     print('Loading victim_model')
 
-    defence_type = 'STSA'
-    new_victim_model1 = STSA_victim_model(args, dataname, victim_type1, victim_loader, train_test_ratio, victim_lr,
-                                            device)
-    new_victim_model2 = STSA_victim_model(args, dataname, victim_type2, victim_loader, train_test_ratio, victim_lr,
-                                            device)
-    new_victim_model3 = STSA_victim_model(args, dataname, victim_type3, victim_loader, train_test_ratio, victim_lr,
-                                            device)
-    new_victim_model4 = STSA_victim_model(args, dataname, victim_type4, victim_loader, train_test_ratio, victim_lr,
-                                            device)
+    defence_type = 'DPSTSA'  #DPSTSA, STSA
 
+    if defence_type == 'DPSTSA':
+        new_victim_model1 = DPSTSA_victim_model(args, dataname, victim_type1, victim_loader, train_test_ratio,
+                                                victim_lr,
+                                                device)
+        objective_function2(new_victim_model1, victim_loader, round(num_node * train_test_ratio), device, type=None)
+        new_victim_model2 = DPSTSA_victim_model(args, dataname, victim_type2, victim_loader, train_test_ratio,
+                                                victim_lr,
+                                                device)
+        objective_function2(new_victim_model2, victim_loader, round(num_node * train_test_ratio), device, type=None)
+        new_victim_model3 = DPSTSA_victim_model(args, dataname, victim_type3, victim_loader, train_test_ratio,
+                                                victim_lr,
+                                                device)
+        objective_function2(new_victim_model3, victim_loader, round(num_node * train_test_ratio), device, type=None)
+        new_victim_model4 = DPSTSA_victim_model(args, dataname, victim_type4, victim_loader, train_test_ratio,
+                                                victim_lr,
+                                                device)
+        objective_function2(new_victim_model4, victim_loader, round(num_node * train_test_ratio), device, type=None)
+
+    elif defence_type =='STSA':
+        new_victim_model1 = STSA_victim_model(args, dataname, victim_type1, victim_loader, train_test_ratio, victim_lr,
+                                              device)
+
+        new_victim_model2 = STSA_victim_model(args, dataname, victim_type2, victim_loader, train_test_ratio, victim_lr,
+                                              device)
+        new_victim_model3 = STSA_victim_model(args, dataname, victim_type3, victim_loader, train_test_ratio, victim_lr,
+                                              device)
+        new_victim_model4 = STSA_victim_model(args, dataname, victim_type4, victim_loader, train_test_ratio, victim_lr,
+                                              device)
+
+    #测试
+    a1, b1 = objective_function2(new_victim_model1, victim_loader, round(num_node * train_test_ratio), device,
+                                 type=None)
+    a2, b2 = objective_function2(new_victim_model2, victim_loader, round(num_node * train_test_ratio), device,
+                                 type=None)
+    a3, b3 = objective_function2(new_victim_model3, victim_loader, round(num_node * train_test_ratio), device,
+                                 type=None)
+    a4, b4 = objective_function2(new_victim_model4, victim_loader, round(num_node * train_test_ratio), device,
+                                 type=None)
+    print('V_accuracy')
+    for a in [float(a1), float(a2), float(a3), float(a4)]:
+        print(a)
+    print('V_f1')
+    for b in [float(b1), float(b2), float(b3), float(b4)]:
+        print(b)
+
+    #exit()
 
 
 
@@ -176,6 +216,40 @@ def run():
                                           device, new_victim_model4)
     node_features = torch.tensor(dataset.targets).shape[2]
     print('Loading attack_model')
+    '''
+    for attack_model_type in attack_model_types:
+        new_attack_model1 = raw_attack_model(attack_model_type, defence_type, args, dataname, victim_loader,
+                                             shadow_loader,
+                                             new_victim_model1,
+                                             new_shadow_models1, node_features, num_classes, attack_type1,
+                                             device)  # 获取多个shadow attack
+        new_attack_model1.fit(shadow_loader, train_test_ratio, num_epoches=300, learning_rate=attack_lr,
+                              criterion=criterions['bce'].to(device))
+        new_attack_model2 = raw_attack_model(attack_model_type, defence_type, args, dataname, victim_loader,
+                                             shadow_loader,
+                                             new_victim_model2, new_shadow_models2, node_features, num_classes,
+                                             attack_type2,
+                                             device)
+        new_attack_model2.fit(shadow_loader, train_test_ratio, num_epoches=300, learning_rate=attack_lr,
+                              criterion=criterions['bce'].to(device))
+        new_attack_model3 = raw_attack_model(attack_model_type, defence_type, args, dataname, victim_loader,
+                                             shadow_loader,
+                                             new_victim_model3, new_shadow_models3, node_features, num_classes,
+                                             attack_type3,
+                                             device)
+        new_attack_model3.fit(shadow_loader, train_test_ratio, num_epoches=300, learning_rate=attack_lr,
+                              criterion=criterions['bce'].to(device))
+        new_attack_model4 = raw_attack_model(attack_model_type, defence_type, args, dataname, victim_loader,
+                                             shadow_loader,
+                                             new_victim_model4, new_shadow_models4, node_features, num_classes,
+                                             attack_type4,
+                                             device)
+        new_attack_model4.fit(shadow_loader, train_test_ratio, num_epoches=300, learning_rate=attack_lr,
+                              criterion=criterions['bce'].to(device))
+    exit()
+
+   '''
+
     new_attack_model1 = raw_attack_model(attack_model_type, defence_type, args, dataname, victim_loader, shadow_loader,
                                          new_victim_model1,
                                          new_shadow_models1, node_features, num_classes, attack_type1,
@@ -201,6 +275,7 @@ def run():
     new_attack_model4.fit(shadow_loader, train_test_ratio, num_epoches=300, learning_rate=attack_lr,
                           criterion=criterions['bce'].to(device))
 
+
     # attack_model.fit(victim_loader1, victim_loader2, num_epoches=1000, learning_rate=0.01,  criterion=criterions['bce'].to(device))
     # DBLP5:0.005 #DBLP3:0.03 #reddit, Brain:0.08
     # new_attack_model.fit(shadow_loader, train_test_ratio, num_epoches=500, learning_rate=attack_lr, criterion=criterions['bce'].to(device))
@@ -211,20 +286,25 @@ def run():
     result3, accuracy3 = new_attack_model3.infer2(victim_loader, train_test_ratio)
     result4, accuracy4 = new_attack_model4.infer2(victim_loader, train_test_ratio)
 
-    a1 = float(
-        objective_function2(new_victim_model1, victim_loader, round(num_node * train_test_ratio), device, type=None))
-    a2 = float(
-        objective_function2(new_victim_model2, victim_loader, round(num_node * train_test_ratio), device, type=None))
-    a3 = float(
-        objective_function2(new_victim_model3, victim_loader, round(num_node * train_test_ratio), device, type=None))
-    a4 = float(
-        objective_function2(new_victim_model4, victim_loader, round(num_node * train_test_ratio), device, type=None))
-    print('F1-SCORE')
-    for r in [a1 / result1, a2 / result2, a3 / result3, a4 / result4]:
-        print(r)
-    print('Accuracy')
-    for a in [a1 / accuracy1, a2 / accuracy2, a3 / accuracy3, a4 / accuracy4]:
+    a1,b1 = objective_function2(new_victim_model1, victim_loader, round(num_node * train_test_ratio), device, type=None)
+    a2,b2 = objective_function2(new_victim_model2, victim_loader, round(num_node * train_test_ratio), device, type=None)
+    a3,b3 = objective_function2(new_victim_model3, victim_loader, round(num_node * train_test_ratio), device, type=None)
+    a4,b4 = objective_function2(new_victim_model4, victim_loader, round(num_node * train_test_ratio), device, type=None)
+
+
+    print('V_accuracy')
+    for a in [float(a1), float(a2), float(a3), float(a4)]:
         print(a)
+    print('V_f1')
+    for b in [float(b1), float(b2), float(b3), float(b4)]:
+        print(b)
+
+    print('A-accuracy')
+    for a in [float(accuracy1), float(accuracy2), float(accuracy3), float(accuracy4)]:
+        print(a)
+    print('A_f1')
+    for r in [float(result1), float(result2), float(result3), float(result4)]:
+        print(r)
 
     # a = objective_function(new_victim_model, victim_loader, round(num_node * train_test_ratio), device, type=None)
     # print('f1-score trade-off is '+str(a/result))

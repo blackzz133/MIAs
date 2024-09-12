@@ -148,11 +148,85 @@ class TemporalAttentionLayer(nn.Module):
                 H_temp2[:, t, :] += torch.matmul(inputs[:,t2,:],self.temp2_weights[t2])
             H_temp2[:, t, :] /= min(t+1, self.num_time_steps)
         alph = torch.bmm(H_temp1, H_temp2.transpose(1,2))
+
         H_temp = torch.matmul(inputs,self.temp_weights)
         outputs = torch.matmul(alph, H_temp)
         if self.training:
             outputs = self.drop(outputs)
         return outputs+inputs  # if node
+    def xavier_init(self):
+        #nn.init.xavier_uniform_(self.position_embeddings)
+        #nn.init.xavier_uniform_(self.Q_embedding_weights)
+        #nn.init.xavier_uniform_(self.K_embedding_weights)
+        #nn.init.xavier_uniform_(self.V_embedding_weights)
+        nn.init.xavier_uniform_(self.temp1_weights)
+        nn.init.xavier_uniform_(self.temp2_weights)
+        nn.init.xavier_uniform_(self.temp_weights)
+
+    def feedforward(self, inputs):
+        outputs = F.relu(self.lin(inputs))
+        return outputs+inputs
+
+class TemporalAttentionLayer2(nn.Module):
+    def __init__(self,
+                 input_dim,
+                 n_heads,
+                 num_time_steps, #已经修改为time_span
+                 attn_drop,
+                 residual):
+        super(TemporalAttentionLayer2, self).__init__()
+        self.n_heads = n_heads
+        self.num_time_steps = num_time_steps
+        self.residual = residual
+        # define weights
+        self.temp_weights = nn.Parameter(torch.Tensor(input_dim, input_dim))
+        self.temp1_weights = nn.Parameter(torch.Tensor(input_dim, input_dim))
+        self.temp2_weights = nn.Parameter(torch.Tensor(self.num_time_steps, input_dim, input_dim))
+        self.drop1 = nn.Dropout(0.8)
+        self.drop2 = nn.Dropout(0.8)
+        #self.position_embeddings = nn.Parameter(torch.Tensor(self.num_time_steps, input_dim))
+        #self.Q_embedding_weights = nn.Parameter(torch.Tensor(input_dim, input_dim))
+        #self.K_embedding_weights = nn.Parameter(torch.Tensor(input_dim, input_dim))
+        #self.V_embedding_weights = nn.Parameter(torch.Tensor(input_dim, input_dim))
+        self.type = type
+
+        # ff
+        self.lin = nn.Linear(input_dim, input_dim, bias=True)
+        # dropout
+        self.attn_dp = nn.Dropout(attn_drop)
+        self.xavier_init()
+
+    def forward(self, inputs):
+        """In:  attn_outputs (of StructuralAttentionLayer at each snapshot):= [N, T, F]"""
+        #N节点，T时间，F特征
+        # 1: Add position embeddings to input
+        # [N,T]
+        #assert inputs.shape[1] >= self.num_time_steps
+        #H_temp1 = []
+        #H_temp2 = []
+        time = inputs.shape[1] #(N.T,D)
+        #inputs = inputs.transpose(0,1) #(N.T,D)
+        H_temp1 = torch.matmul(inputs, self.temp1_weights)
+        H_temp2 = inputs - inputs
+        H_temp3 = inputs - inputs
+        #H_temp2 = H_temp2 - H_temp2
+
+        for t in range(0,time):
+            for t2 in range(max(0,t-self.num_time_steps+1),t+1):
+                H_temp2[:, t, :] += torch.matmul(inputs[:,t2,:],self.temp2_weights[t2])
+                H_temp3[:, t, :] += torch.matmul(inputs[:, max(0,t2-self.num_time_steps), :], self.temp2_weights[max(0,t2-self.num_time_steps)])
+            H_temp2[:, t, :] /= min(t+1, self.num_time_steps)
+            H_temp3[:, t, :] /= min(t + 1, self.num_time_steps)
+
+        alph = torch.bmm(H_temp1, H_temp2.transpose(1,2))
+        beta = torch.bmm(H_temp3, H_temp3.transpose(1,2))
+        H_temp = torch.matmul(inputs,self.temp_weights)
+        outputs = torch.matmul(alph, H_temp)
+        outputs2 = torch.matmul(beta,H_temp)
+        if self.training:
+            outputs = self.drop2(outputs)
+            outputs2 = self.drop2(outputs)
+        return outputs+outputs2+inputs  # if node
     def xavier_init(self):
         #nn.init.xavier_uniform_(self.position_embeddings)
         #nn.init.xavier_uniform_(self.Q_embedding_weights)

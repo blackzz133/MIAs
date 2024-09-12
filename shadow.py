@@ -4,7 +4,7 @@ import networkx as nx
 from dataloader import DBLPLoader
 from torch_geometric_temporal.signal import temporal_signal_split,train_test_split
 import torch.optim.lr_scheduler as lr_scheduler
-from models import ModelfreeGCN, VRecurrentGCN, GCN,LitDiffConvModel, DCRNN_RecurrentGCN, \
+from models import ModelfreeGCN, VRecurrentGCN, GCN, DCRNN_RecurrentGCN, \
     EvolveGCNO_RecurrentGCN, TGCN_RecurrentGCN, A3TGCN_RecurrentGCN, GConvGRU_RecurrentGCN
 from tqdm import tqdm
 

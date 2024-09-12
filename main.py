@@ -90,10 +90,10 @@ def main():
     criterions = {'mse': criterion_mse, 'f1': criterion_f1, 'cross_entropy': criterion_cross_entropy,
                   'bce': criterion_bce}
     #victim_type = 'DCRNN' #DCRNN, XXXEVOLVEGCNO,GConvGRU, TGCN, A3TGCN
-    dataname = 'DBLP3' #DBLP5,DBLP3,reddit, Brain, epinion
+    dataname = 'DBLP5' #DBLP5,DBLP3,reddit, Brain, epinion
 
     attack_model_type = 'GCN' #STG #DCRNN, GConvGRU, TGCN, A3TGCN, GCN
-    defence_type = 'STSA'  # raw, relaxloss, DP,adver, STSA
+    defence_type = 'DP'  # raw, relaxloss, DP,adver, STSA
     victim_type = 'GConvGRU'
     shadow_type = 'GConvGRU' #在这里加一个AL：active learning
     attack_type = str(victim_type)+'-'+str(shadow_type)
@@ -138,11 +138,18 @@ def main():
     #print(victim_type)
 
     print('Loading victim_model')
-    new_victim_model1 = raw_victim_model(args, dataname, victim_type, victim_loader, train_test_ratio, victim_lr, device)
-    new_victim_model2 = relax_victim_model(args, dataname, victim_type, victim_loader, train_test_ratio, victim_lr, device)
-    new_victim_model3 = adver_victim_model(args, dataname, victim_type, victim_loader, train_test_ratio, victim_lr, device)
-    new_victim_model4 = DP_victim_model(args, dataname, victim_type, victim_loader, train_test_ratio, victim_lr, device)
+    #new_victim_model1 = raw_victim_model(args, dataname, victim_type, victim_loader, train_test_ratio, victim_lr, device)
+
+    #new_victim_model2 = relax_victim_model(args, dataname, victim_type, victim_loader, train_test_ratio, victim_lr, device)
+
+    #new_victim_model3 = adver_victim_model(args, dataname, victim_type, victim_loader, train_test_ratio, victim_lr, device)
+
+    #new_victim_model4 = DP_victim_model(args, dataname, victim_type, victim_loader, train_test_ratio, victim_lr, device)
+
     new_victim_model5 = STSA_victim_model(args, dataname, victim_type, victim_loader, train_test_ratio, victim_lr, device)
+    objective_function2(new_victim_model5, victim_loader, round(num_node * train_test_ratio), device, type=None)
+    exit()
+
 
 
 
