@@ -11,6 +11,8 @@ shadow.py refer to the shadow model training
 
 run.py refer to testing the attacks
 
+layers.py refer to the layers of self-attentions
+
 networkx==2.5
 
 nltk==3.7
