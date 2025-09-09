@@ -26,6 +26,7 @@ from torch.utils.data import DataLoader
 import torch_geometric.nn as pyg_nn
 import torch_geometric.utils as pyg_utils
 from torch_geometric.data.data import Data
+from torch.optim import Optimizer
 
 def raw_victim_model(args, dataname, victim_type, victim_loader, train_test_ratio, lr, device):
     url = str(dataname)+'/victim/'+str(victim_type)
@@ -676,7 +677,151 @@ def DPSTSA_victim_model(args, dataname, victim_type, victim_loader, train_test_r
 
 
 
+class LaplaceDPSGD(Optimizer):
+    """
+    Custom Laplace-noise DP optimizer (engineering approximation).
 
+    - Accumulates gradients across microbatches (you must call:
+        zero_microbatch_grad() -> loss.backward() -> microbatch_step()
+      per microbatch, then call step() once per minibatch)
+    - On step(), applies global gradient clipping and adds Laplace noise.
+    - This is NOT standard DPSGD privacy accounting. Use at your own risk.
+    """
+
+    def __init__(self,
+                 params,
+                 lr=1e-3,
+                 l2_norm_clip=1.0,
+                 noise_scale=1.0,
+                 weight_decay=0.0,
+                 betas=(0.9, 0.999),
+                 eps=1e-8):
+        """
+        Args:
+            lr: learning rate
+            l2_norm_clip: gradient clipping threshold (L2)
+            noise_scale: Laplace noise scale multiplier. Actual per-coordinate noise
+                         will be scale = noise_scale * l2_norm_clip.
+            weight_decay: L2 weight decay
+            betas, eps: Adam parameters
+        """
+        if lr <= 0.0:
+            raise ValueError("Invalid learning rate.")
+        if l2_norm_clip <= 0.0:
+            raise ValueError("Invalid l2_norm_clip.")
+        if noise_scale < 0.0:
+            raise ValueError("Invalid noise_scale (must be >= 0).")
+
+        defaults = dict(lr=lr,
+                        l2_norm_clip=l2_norm_clip,
+                        noise_scale=noise_scale,
+                        weight_decay=weight_decay,
+                        betas=betas,
+                        eps=eps)
+        super().__init__(params, defaults)
+
+        # gradient buffers for microbatch accumulation
+        for group in self.param_groups:
+            for p in group['params']:
+                self.state[p]['grad_accum'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+
+        # Adam states
+        for group in self.param_groups:
+            for p in group['params']:
+                state = self.state[p]
+                state['step'] = 0
+                state['exp_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+                state['exp_avg_sq'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+
+    @torch.no_grad()
+    def zero_microbatch_grad(self):
+        """Zero .grad before computing a microbatch gradient."""
+        for group in self.param_groups:
+            for p in group['params']:
+                if p.grad is not None:
+                    p.grad.zero_()
+
+    @torch.no_grad()
+    def microbatch_step(self):
+        """
+        Accumulate unscaled microbatch gradients into grad_accum.
+        Call this after loss.backward() for a microbatch.
+        """
+        for group in self.param_groups:
+            for p in group['params']:
+                if p.grad is None:
+                    continue
+                self.state[p]['grad_accum'].add_(p.grad)
+
+    @torch.no_grad()
+    def step(self, closure=None):
+        """
+        Perform one DP update:
+        - Aggregate accumulated gradients
+        - Global L2 clip
+        - Add Laplace noise
+        - Adam parameter update
+        - Reset accumulators
+        """
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+
+        for group in self.param_groups:
+            lr = group['lr']
+            l2_norm_clip = group['l2_norm_clip']
+            noise_scale = group['noise_scale']
+            weight_decay = group['weight_decay']
+            beta1, beta2 = group['betas']
+            eps = group['eps']
+
+            # Compute total norm over all params (for global clipping)
+            total_norm_sq = 0.0
+            for p in group['params']:
+                g = self.state[p]['grad_accum']
+                if weight_decay != 0:
+                    g = g.add(p, alpha=weight_decay)
+                total_norm_sq += g.pow(2).sum().item()
+            total_norm = math.sqrt(total_norm_sq) + 1e-12
+            clip_coef = min(1.0, l2_norm_clip / total_norm)
+
+            # Apply clipping and add Laplace noise per parameter tensor
+            for p in group['params']:
+                state = self.state[p]
+                grad = state['grad_accum']
+
+                if weight_decay != 0:
+                    grad = grad.add(p, alpha=weight_decay)
+
+                # scale by global clip coef
+                grad.mul_(clip_coef)
+
+                # Add Laplace noise
+                # NOTE: This uses per-coordinate Laplace(0, b) with b = noise_scale * l2_norm_clip.
+                # This is an engineering choice; proper sensitivity analysis is needed for strict DP.
+                if noise_scale > 0.0:
+                    b = noise_scale * l2_norm_clip
+                    lap_noise = sample_laplace_like(grad, b)
+                    grad.add_(lap_noise)
+
+                # Adam update
+                exp_avg = state['exp_avg']
+                exp_avg_sq = state['exp_avg_sq']
+                state['step'] += 1
+
+                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
+                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
+
+                denom = exp_avg_sq.sqrt().add_(eps)
+                step_size = lr
+
+                p.addcdiv_(exp_avg, denom, value=-step_size)
+
+                # reset accumulators
+                state['grad_accum'].zero_()
+
+        return loss
 
 def objective_function(model, dataset, split, device, type):
     accuracy = 0
@@ -865,6 +1010,7 @@ def clip_gradients(parameters, max_norm):
         for p in parameters:
             if p.grad is not None:
                 p.grad.data.mul_(clip_coef)
+
 
 
 
