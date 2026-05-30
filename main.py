@@ -70,19 +70,6 @@ parser.add_argument('--window', type=int, nargs='?', default=-1,
                         help='Window for temporal attention (default : -1 => full)')
 parser.add_argument('--epsilon', type=float, default=1.0,
                     help='privacy budget for DP methods, e.g., 0.5, 1, 2')
-parser.add_argument('--delta', type=float, default=1e-5,
-                    help='delta for Gaussian DP')
-parser.add_argument('--l2_norm_clip', type=float, default=1.0,
-                    help='gradient clipping bound for DP baselines')
-parser.add_argument('--Cs', type=float, default=5.0,
-                    help='gradient clipping bound for spatial self-attention layers')
-parser.add_argument('--Ct', type=float, default=5.0,
-                    help='gradient clipping bound for temporal self-attention layers')
-parser.add_argument('--tau', type=float, default=1.0,
-                    help='allocation factor for spatial-temporal privacy budget')
-parser.add_argument('--dp_noise', type=str, default='gaussian',
-                    choices=['gaussian', 'laplace'],
-                    help='noise type for DP-STSA')
 
 #def objective_function(model, data)
 
