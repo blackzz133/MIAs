@@ -49,6 +49,10 @@ parser.add_argument('--neg_weight', type=float, nargs='?', default=1.0,
                         help='Weightage for negative samples')
 parser.add_argument('--learning_rate', type=float, nargs='?', default=0.01,
                         help='Initial learning rate for self-attention model.')
+parser.add_argument('--spatial_drop', type=float, nargs='?', default=0.1,
+                        help='Spatial (structural) attention Dropout (1 - keep probability).')
+parser.add_argument('--temporal_drop', type=float, nargs='?', default=0.5,
+                        help='Temporal attention Dropout (1 - keep probability).')
 parser.add_argument('--weight_decay', type=float, nargs='?', default=0.0005,
                         help='Initial learning rate for self-attention model.')
     # Architecture params
@@ -66,6 +70,19 @@ parser.add_argument('--window', type=int, nargs='?', default=-1,
                         help='Window for temporal attention (default : -1 => full)')
 parser.add_argument('--epsilon', type=float, default=1.0,
                     help='privacy budget for DP methods, e.g., 0.5, 1, 2')
+parser.add_argument('--delta', type=float, default=1e-5,
+                    help='delta for Gaussian DP')
+parser.add_argument('--l2_norm_clip', type=float, default=1.0,
+                    help='gradient clipping bound for DP baselines')
+parser.add_argument('--Cs', type=float, default=5.0,
+                    help='gradient clipping bound for spatial self-attention layers')
+parser.add_argument('--Ct', type=float, default=5.0,
+                    help='gradient clipping bound for temporal self-attention layers')
+parser.add_argument('--tau', type=float, default=1.0,
+                    help='allocation factor for spatial-temporal privacy budget')
+parser.add_argument('--dp_noise', type=str, default='gaussian',
+                    choices=['gaussian', 'laplace'],
+                    help='noise type for DP-STSA')
 
 #def objective_function(model, data)
 
@@ -103,67 +120,65 @@ def main():
     #node_features = torch.tensor(dataset.features).shape[2]
     num_classes = torch.tensor(dataset.targets).shape[2]
     num_node = torch.tensor(dataset.targets).shape[1]
+    #ratio = 0.6
+    #victim_loader, attack_loader = temporal_signal_split(dataset, ratio)
+    #victim_division_ratio = 0.5
+    #attack_division_ratio = 0.5
     train_test_ratio = 0.7
     victim_shadow_ratio = 0.5
     shadow_loader, victim_loader = temporal_signal_split(dataset, victim_shadow_ratio)
-    if dataname =='DBLP5':
-        victim_lr = 0.015
-        shadow_lr = 0.015
-        attack_lr = 0.005
-    elif dataname== 'DBLP3':
-        victim_lr = 0.015
-        shadow_lr = 0.015
-        attack_lr = 0.005
-    elif dataname == 'reddit':
-        victim_lr = 0.015
-        shadow_lr = 0.015
-        attack_lr = 0.005
-    elif dataname == 'Brain':
-        victim_lr = 0.015
-        shadow_lr = 0.015
-        attack_lr = 0.005
-    elif dataname == 'epinion':
-        victim_lr = 0.1
-        shadow_lr = 0.1
-        attack_lr = 0.1
+    #victim_loader1, victim_loader2 = temporal_signal_split(victim_loader, victim_division_ratio)
+    #attack_loader1, attack_loader2 = temporal_signal_split(attack_loader, attack_division_ratio)
+    victim_lr = 0.005
+    shadow_lr = 0.005
+    attack_lr = 0.005
+    #dataset = None
+    #features = None
+    #print(victim_type)
 
     print('Loading victim_model')
 
-
-    #new_victim_model1 = raw_victim_model(
-    #    args, dataname, victim_type, victim_loader,
-    #    train_test_ratio, victim_lr, device
-    #)
-
-    #new_victim_model2 = relax_victim_model(
-    #    args, dataname, victim_type, victim_loader,
-    #    train_test_ratio, victim_lr, device
-    #)
-
-    #new_victim_model3 = adver_victim_model(
-    #    args, dataname, victim_type, victim_loader,
-    #    train_test_ratio, victim_lr, device
-    #)
-
-    new_victim_model4 = DP_victim_model(
-        args, dataname, victim_type, victim_loader,
-        train_test_ratio, victim_lr, device
-    )
-
-    new_victim_model5 = LapDP_victim_model(
-        args, dataname, victim_type, victim_loader,
-        train_test_ratio, victim_lr, device
-    )
-    new_victim_model6 = STSA_victim_model(
-        args, dataname, victim_type, victim_loader,
-        train_test_ratio, victim_lr, device
-    )
-
-    new_victim_model7 = DP_STSA_victim_model(
-        args, dataname, victim_type, victim_loader,
-        train_test_ratio, victim_lr, device
-    )
     
+    new_victim_model = raw_victim_model(
+        args, dataname, victim_type, victim_loader,
+        train_test_ratio, victim_lr, device
+    ) #relax_victim_model, adver_victim_model,  DP_victim_model,LapDP_victim_model,LapDP_victim_model, STSA_victim_model,DP_STSA_victim_model
+
+    else:
+        raise ValueError('Unknown defence_type: {}'.format(defence_type))
+
+    if defence_type in ['STSA', 'DP-STSA']:
+        objective_function2(
+            new_victim_model,
+            victim_loader,
+            round(num_node * train_test_ratio),
+            device,
+            type='train'
+        )
+        objective_function2(
+            new_victim_model,
+            victim_loader,
+            round(num_node * train_test_ratio),
+            device,
+            type='test'
+        )
+    else:
+        objective_function(
+            new_victim_model,
+            victim_loader,
+            round(num_node * train_test_ratio),
+            device,
+            type='train'
+        )
+        objective_function(
+            new_victim_model,
+            victim_loader,
+            round(num_node * train_test_ratio),
+            device,
+            type='test'
+        )
+
+
     print('Loading shadow_model')
     #shadow_model = DBLP5_shadow_model(args, shadow_type, victim_loader1, device)
     new_shadow_models = raw_shadow_model(args, dataname, shadow_type, shadow_loader, train_test_ratio, shadow_lr, device, new_victim_model)
@@ -174,97 +189,10 @@ def main():
         victim_loader, shadow_loader, new_victim_model,
         new_shadow_models, node_features, num_classes,
         attack_type, device
-    )
-    new_attack_model1.fit(
-        shadow_loader, train_test_ratio, num_epoches=300,
-        learning_rate=attack_lr, criterion=criterions['bce'].to(device)
-    )
-
-    new_attack_model2 = raw_attack_model(
-        attack_model_type, 'relaxloss', args, dataname,
-        victim_loader, shadow_loader, new_victim_model,
-        new_shadow_models, node_features, num_classes,
-        attack_type, device
-    )
-    new_attack_model2.fit(
-        shadow_loader, train_test_ratio, num_epoches=300,
-        learning_rate=attack_lr, criterion=criterions['bce'].to(device)
-    )
-
-    new_attack_model3 = raw_attack_model(
-        attack_model_type, 'adver', args, dataname,
-        victim_loader, shadow_loader, new_victim_model,
-        new_shadow_models, node_features, num_classes,
-        attack_type, device
-    )
-    new_attack_model3.fit(
-        shadow_loader, train_test_ratio, num_epoches=300,
-        learning_rate=attack_lr, criterion=criterions['bce'].to(device)
-    )
-
-    new_attack_model4 = raw_attack_model(
-        attack_model_type, 'GauDP', args, dataname,
-        victim_loader, shadow_loader, new_victim_model,
-        new_shadow_models, node_features, num_classes,
-        attack_type, device
-    )
-    new_attack_model4.fit(
-        shadow_loader, train_test_ratio, num_epoches=300,
-        learning_rate=attack_lr, criterion=criterions['bce'].to(device)
-    )
-
-    new_attack_model5 = raw_attack_model(
-        attack_model_type, 'LapDP', args, dataname,
-        victim_loader, shadow_loader, new_victim_model,
-        new_shadow_models, node_features, num_classes,
-        attack_type, device
-    )
-    new_attack_model5.fit(
-        shadow_loader, train_test_ratio, num_epoches=300,
-        learning_rate=attack_lr, criterion=criterions['bce'].to(device)
-    )
-
-    new_attack_model6 = raw_attack_model(
-        attack_model_type, 'STSA', args, dataname,
-        victim_loader, shadow_loader, new_victim_model,
-        new_shadow_models, node_features, num_classes,
-        attack_type, device
-    )
-    new_attack_model6.fit(
-        shadow_loader, train_test_ratio, num_epoches=300,
-        learning_rate=attack_lr, criterion=criterions['bce'].to(device)
-    )
-
-    new_attack_model7 = raw_attack_model(
-        attack_model_type, 'DP-STSA', args, dataname,
-        victim_loader, shadow_loader, new_victim_model,
-        new_shadow_models, node_features, num_classes,
-        attack_type, device
-    )
-    new_attack_model7.fit(
-        shadow_loader, train_test_ratio, num_epoches=300,
-        learning_rate=attack_lr, criterion=criterions['bce'].to(device)
-    )
-
-    if defence_type == 'raw':
-        new_attack_model = new_attack_model1
-    elif defence_type == 'relaxloss':
-        new_attack_model = new_attack_model2
-    elif defence_type == 'adver':
-        new_attack_model = new_attack_model3
-    elif defence_type == 'GauDP':
-        new_attack_model = new_attack_model4
-    elif defence_type == 'LapDP':
-        new_attack_model = new_attack_model5
-    elif defence_type == 'STSA':
-        new_attack_model = new_attack_model6
-    elif defence_type == 'DP-STSA':
-        new_attack_model = new_attack_model7
-    else:
-        raise ValueError('Unknown defence_type: {}'.format(defence_type))
+    ) #raw, relaxloss, adver, GauDP,LapDP,STSA,DP-STSA
+    new_attack_model = new_attack_model1
 
     #attack_model.fit(victim_loader1, victim_loader2, num_epoches=1000, learning_rate=0.01,  criterion=criterions['bce'].to(device))
-    #DBLP5:0.005 #DBLP3:0.03 #reddit, Brain:0.08
     #new_attack_model.fit(shadow_loader, train_test_ratio, num_epoches=500, learning_rate=attack_lr, criterion=criterions['bce'].to(device))
     print('attack_model testing')
     #exit()
